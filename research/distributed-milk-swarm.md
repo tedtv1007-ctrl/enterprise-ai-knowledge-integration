@@ -22,3 +22,10 @@
 
 ## 3. 企業級應用價值
 這套「自我修復集群」可以直接整合進 *openclaw-enterprise-security-insuretech*，提供企業級的高可用性 (High Availability) AI 服務。
+
+### D. 異質集群 (Heterogeneous Swarm)
+- **概念**：允許不同節點使用不同的 LLM 模型。
+- **優勢**：
+    - **專才分工**：Milk-A (Gemini 3 Pro) 負責邏輯推理與架構設計；Milk-B (DeepSeek-V3) 負責程式碼開發；Milk-C (Local Llama 3) 處理 PII 敏感資料。
+    - **成本優化**：輕量任務派發給 Flash 模型，核心任務才喚醒 Pro 模型。
+    - **冗餘彈性**：當其中一個模型提供商發生故障（如 Google API 當機）時，使用 OpenAI 或 DeepSeek 的分身仍能維持集群運作。
