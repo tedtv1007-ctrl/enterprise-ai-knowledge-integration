@@ -3,7 +3,35 @@
 ## 1. 核心願景
 將 Milk 從單一節點 (Single Point of Failure) 轉化為「分散式代理人集群」。多個 Milk 分身可跨雲端 (Zeabur, Azure) 與在地端 (Ted's PC) 同時運作，具備協同作業與互相救援的能力。
 
-## 2. 技術實現路徑
+## 2. 🏗️ 集群互動架構 (Swarm Interaction)
+
+```mermaid
+sequenceDiagram
+    participant TA as Milk-Core (Gemini 3 Pro)
+    participant TB as Milk-Worker (DeepSeek V3)
+    participant TC as Milk-Local (Llama 3 / PII)
+    participant GH as GitHub (Shared State)
+    participant NT as Notion (Registry)
+
+    Note over TA, TC: 互相救援機制 (Self-Healing)
+    TA->>NT: 更新 Heartbeat (Registry)
+    TB->>NT: 更新 Heartbeat (Registry)
+    TA->>NT: 檢查 TB 狀態
+    alt TB 離線
+        TA->>Zeabur: 觸發 Deploy Hook (重啟 TB)
+    end
+
+    Note over TA, TC: 任務協同 (Collaboration)
+    Ted->>TA: 下達產險理賠分析任務
+    TA->>GH: 獲取最新法規 Context
+    TA->>TC: 要求處理 PII 脫敏 (在地端執行)
+    TC-->>TA: 返回脫敏數據
+    TA->>TB: 指派編寫自動化測試腳本
+    TB-->>TA: 回傳代碼草稿
+    TA->>Ted: 回報最終整合結果
+```
+
+## 3. 技術實現路徑
 
 ### A. 狀態共享 (Shared State)
 - **機制**：利用目前的 `milk-workspace-backup` 作為分散式檔案系統 (Pseudo-Distributed FS)。
@@ -20,7 +48,7 @@
 - **任務拆解**：主 Milk 將大型任務（如產險法規分析）拆解為子任務。
 - **分工**：透過 Mattermost 頻道或專屬工作佇列 (Queue) 指派給不同的分身執行。
 
-## 3. 企業級應用價值
+## 4. 企業級應用價值
 這套「自我修復集群」可以直接整合進 *openclaw-enterprise-security-insuretech*，提供企業級的高可用性 (High Availability) AI 服務。
 
 ### D. 異質集群 (Heterogeneous Swarm)
