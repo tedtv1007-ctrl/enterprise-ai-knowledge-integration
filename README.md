@@ -2,6 +2,26 @@
 
 本專案致力於研究與實作企業內部的知識整合與協作系統，核心技術採用 Container 部署。
 
+## 🏗️ 系統架構 (Architecture)
+
+```mermaid
+graph TD
+    subgraph "Enterprise Network (Docker Containers)"
+        Wiki["Wiki.js / Outline<br/>(知識庫)"]
+        Chat["Mattermost<br/>(協作通訊)"]
+        Ollama["Ollama<br/>(本地大模型)"]
+        RAG["AnythingLLM<br/>(知識檢索)"]
+        MCP["MCP Server<br/>(連動協議層)"]
+    end
+
+    User((使用者)) -->|搜尋與編輯| Wiki
+    User -->|指令與對談| Chat
+    Chat -->|呼叫工具| MCP
+    MCP -->|提供上下文| RAG
+    RAG -->|檢索知識| Wiki
+    RAG -->|模型推理| Ollama
+```
+
 ## 整合工具鏈
 - **知識庫 (Wiki)**: Wiki.js / Outline
 - **協作通訊 (Chat)**: Mattermost
