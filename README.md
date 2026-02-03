@@ -6,25 +6,40 @@
 
 ```mermaid
 graph TD
-    subgraph "Enterprise Network (Docker Containers)"
+    subgraph "Identity & Security (AD/SSO)"
+        AD["Active Directory<br/>(企業使用者目錄)"]
+        KC["Keycloak<br/>(SSO 認證中心)"]
+    end
+
+    subgraph "Enterprise AI Workspace (Docker Containers)"
         Wiki["Wiki.js / Outline<br/>(知識庫)"]
         Chat["Mattermost<br/>(協作通訊)"]
-        Ollama["Ollama<br/>(本地大模型)"]
+        OC["OpenClaw Agent<br/>(AI 核心總控)"]
         RAG["AnythingLLM<br/>(知識檢索)"]
+        Ollama["Ollama<br/>(本地大模型)"]
         MCP["MCP Server<br/>(連動協議層)"]
     end
 
-    User((使用者)) -->|搜尋與編輯| Wiki
+    AD -->|LDAP 同步| KC
+    KC -->|OIDC / SAML| Wiki
+    KC -->|OIDC / SAML| Chat
+    
+    User((使用者)) -->|身份登入| KC
+    User -->|搜尋與編輯| Wiki
     User -->|指令與對談| Chat
-    Chat -->|呼叫工具| MCP
-    MCP -->|提供上下文| RAG
-    RAG -->|檢索知識| Wiki
-    RAG -->|模型推理| Ollama
+    
+    Chat <-->|提供助理服務| OC
+    OC <-->|連動協議| MCP
+    MCP <-->|上下文檢索| RAG
+    RAG <-->|內容索引| Wiki
+    RAG <-->|推理計算| Ollama
 ```
 
 ## 整合工具鏈
+- **身份驗證 (Auth)**: Keycloak + Active Directory
 - **知識庫 (Wiki)**: Wiki.js / Outline
 - **協作通訊 (Chat)**: Mattermost
+- **AI 代理 (Agent)**: OpenClaw
 - **本機腦 (Local LLM)**: Ollama
 - **知識檢索與 RAG**: AnythingLLM
 - **連動協議**: MCP (Model Context Protocol)
