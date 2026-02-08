@@ -13,7 +13,7 @@
 *   **GraphQL 對接**：確立了透過 Wiki.js GraphQL API 提取 Markdown 內容的自動化路徑。
 *   **向量化流程**：規劃使用 **PostgreSQL (pgvector)** 進行語義區塊 (Chunking) 儲存，支援 AI 針對內部規範執行精準檢索。
 
-### RAG 運作流程圖
+### RAG 運作流程圖 (中文)
 ```mermaid
 sequenceDiagram
     participant User
@@ -27,6 +27,22 @@ sequenceDiagram
     Gateway->>LLM: 提示詞 + 用戶問題 + 參考文件
     LLM-->>Gateway: 生成回答
     Gateway-->>User: 最終回覆
+```
+
+### RAG Detailed Interaction Flow (English)
+```mermaid
+sequenceDiagram
+    participant User
+    participant AIGateway as AI Gateway
+    participant VectorDB as Vector DB
+    participant LLM as Foundational LLM
+
+    User->>AIGateway: Submit Query (e.g., "What is Project RAG?")
+    AIGateway->>VectorDB: 1. Convert query to embedding & search for similar documents
+    VectorDB-->>AIGateway: 2. Return relevant document chunks
+    AIGateway->>LLM: 3. Augment prompt with context & send to LLM
+    LLM-->>AIGateway: 4. Generate response based on context
+    AIGateway-->>User: Return synthesized response
 ```
 
 ---

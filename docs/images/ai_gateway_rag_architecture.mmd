@@ -1,0 +1,35 @@
+
+graph TD
+    subgraph "User Interaction"
+        User(User) -- "/slash-command" --> Mattermost
+    end
+
+    subgraph "AI Gateway (.NET)"
+        Mattermost -- "Request" --> A1[Minimal API Endpoint]
+        A1 -- "Async Task" --> A2(Background Processor)
+        A2 -- "Call for PII Masking" --> PII_Sidecar
+        A2 -- "Query" --> RAG_Service
+        RAG_Service -- "Response" --> A2
+        A2 -- "Prompt" --> LLM
+        LLM -- "Response" --> A2
+        A2 -- "Call for PII Unmasking" --> PII_Sidecar
+        PII_Sidecar -- "Response" --> A2
+        A2 -- "Async Response" --> Mattermost
+    end
+
+    subgraph "PII Sidecar (Node.js)"
+        PII_Sidecar(JSON-RPC)
+    end
+
+    subgraph "RAG Service"
+        RAG_Service(RAG Service) -- "Fetch & Vectorize" --> Wiki_js
+        RAG_Service -- "Store & Query" --> VectorDB
+    end
+
+    subgraph "Data & Model"
+        Wiki_js(Wiki.js GraphQL)
+        VectorDB(PostgreSQL pgvector)
+        LLM(Enterprise LLM)
+    end
+
+    User -- "Sees Final Response" --> Mattermost
