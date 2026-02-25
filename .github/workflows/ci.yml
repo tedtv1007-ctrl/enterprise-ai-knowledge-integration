@@ -1,0 +1,35 @@
+name: Enterprise AI Knowledge Integration CI
+
+on:
+  push:
+    branches: [ "main", "feature/*" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  test-notion-ingestion:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      working-directory: .
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install notion-client
+
+    - name: Run Notion Ingestion Tests
+      working-directory: ./src/notion_ingestion
+      env:
+        PYTHONPATH: ..
+      run: |
+        python -m unittest discover . -p "test_*.py"
