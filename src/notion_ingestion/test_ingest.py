@@ -102,5 +102,10 @@ class TestNotionIngester(unittest.TestCase):
         self.assertIn("```python\nprint('hi')\n```", content)
         self.assertIn("![My Image](http://example.com/img.png)", content)
 
+    @patch("ingest.Client")
+    def test_intentional_failure_for_lobster_reflex(self, MockClient):
+        """A test case designed to fail to trigger the Lobster Architecture reflex arc."""
+        self.assertEqual(True, False, "Intentional failure to test Lobster Reflex Arc")
+
 if __name__ == "__main__":
     unittest.main()
