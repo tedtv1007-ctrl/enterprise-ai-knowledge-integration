@@ -1,31 +1,50 @@
 #!/bin/bash
+# setup-keycloak-ad.sh - Automated Keycloak AD User Federation Configuration
 
-# Keycloak Admin CLI Configuration Script for AD Integration
-# Usage: ./setup-keycloak-ad.sh <KEYCLOAK_URL> <ADMIN_USER> <ADMIN_PASSWORD> <REALM>
+# Configuration
+KEYCLOAK_URL=${KEYCLOAK_URL:-"http://localhost:8080"}
+ADMIN_USER=${ADMIN_USER:-"admin"}
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin"}
+REALM_NAME=${REALM_NAME:-"enterprise"}
 
-KEYCLOAK_URL=$1
-ADMIN_USER=$2
-ADMIN_PASSWORD=$3
-REALM=$4
+# AD Configuration
+AD_DISPLAY_NAME="Active-Directory"
+AD_LDAP_URL=${AD_LDAP_URL:-"ldap://ad-server:389"}
+AD_USERS_DN=${AD_USERS_DN:-"ou=Users,dc=example,dc=com"}
+AD_BIND_DN=${AD_BIND_DN:-"cn=admin,dc=example,dc=com"}
+AD_BIND_CREDENTIAL=${AD_BIND_CREDENTIAL:-"password"}
 
-KC_ADM="/opt/keycloak/bin/kcadm.sh"
+echo "Authenticating with Keycloak..."
+TOKEN=$(curl -s -d "client_id=admin-cli" -d "username=$ADMIN_USER" -d "password=$ADMIN_PASSWORD" -d "grant_type=password" "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" | jq -r .access_token)
 
-# 1. Login to Keycloak
-$KC_ADM config credentials --server "$KEYCLOAK_URL" --realm master --user "$ADMIN_USER" --password "$ADMIN_PASSWORD"
+if [ "$TOKEN" == "null" ]; then
+    echo "Failed to authenticate."
+    exit 1
+fi
 
-# 2. Create LDAP User Federation Provider
-PROVIDER_ID=$($KC_ADM create components -r "$REALM" -s name=ad-federation -s providerId=ldap -s providerType=org.keycloak.storage.UserStorageProvider -s 'config={"vendor":["ad"],"connectionUrl":["ldap://ad.example.com:389"],"usersDn":["OU=Users,DC=example,DC=com"],"bindDn":["CN=Keycloak,CN=Users,DC=example,DC=com"],"bindCredential":["password"],"editMode":["READ_ONLY"],"usernameLDAPAttribute":["sAMAccountName"],"rdnLDAPAttribute":["cn"],"uuidLDAPAttribute":["objectGUID"],"userObjectClasses":["person, organizationalPerson, user"]}' --id)
+echo "Configuring AD User Federation..."
+curl -v -X POST "$KEYCLOAK_URL/admin/realms/$REALM_NAME/components" \
+-H "Authorization: Bearer $TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+    "name": "'"$AD_DISPLAY_NAME"'",
+    "providerId": "ldap",
+    "providerType": "org.keycloak.storage.UserStorageProvider",
+    "parentId": "'"$REALM_NAME"'",
+    "config": {
+        "enabled": ["true"],
+        "priority": ["0"],
+        "vendor": ["ad"],
+        "connectionUrl": ["'"$AD_LDAP_URL"'"],
+        "usersDn": ["'"$AD_USERS_DN"'"],
+        "bindDn": ["'"$AD_BIND_DN"'"],
+        "bindCredential": ["'"$AD_BIND_CREDENTIAL"'"],
+        "useTruststoreSpi": ["always"],
+        "connectionTimeout": ["5000"],
+        "readTimeout": ["5000"],
+        "pagination": ["true"],
+        "allowEmptyPassword": ["false"]
+    }
+}'
 
-echo "Created LDAP Provider with ID: $PROVIDER_ID"
-
-# 3. Create Mappers
-# Email Mapper
-$KC_ADM create components -r "$REALM" -s name=email -s providerId=user-attribute-ldap-mapper -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper -s parentId="$PROVIDER_ID" -s 'config={"user.model.attribute":["email"],"ldap.attribute":["mail"],"read.only":["true"],"always.read.value.from.ldap":["false"],"is.mandatory.in.ldap":["false"]}'
-
-# First Name Mapper
-$KC_ADM create components -r "$REALM" -s name="first name" -s providerId=user-attribute-ldap-mapper -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper -s parentId="$PROVIDER_ID" -s 'config={"user.model.attribute":["firstName"],"ldap.attribute":["givenName"],"read.only":["true"],"always.read.value.from.ldap":["false"],"is.mandatory.in.ldap":["false"]}'
-
-# Last Name Mapper
-$KC_ADM create components -r "$REALM" -s name="last name" -s providerId=user-attribute-ldap-mapper -s providerType=org.keycloak.storage.ldap.mappers.LDAPStorageMapper -s parentId="$PROVIDER_ID" -s 'config={"user.model.attribute":["lastName"],"ldap.attribute":["sn"],"read.only":["true"],"always.read.value.from.ldap":["false"],"is.mandatory.in.ldap":["false"]}'
-
-echo "Configuration Complete."
+echo "Done."

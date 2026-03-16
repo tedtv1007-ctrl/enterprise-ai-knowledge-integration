@@ -1,0 +1,27 @@
+dn: ou=Users,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Users
+
+dn: ou=Groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Groups
+
+dn: cn=Admins,ou=Groups,dc=example,dc=com
+objectClass: groupOfUniqueNames
+cn: Admins
+uniqueMember: cn=admin,dc=example,dc=com
+
+dn: cn=ted_tester,ou=Users,dc=example,dc=com
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: ted_tester
+sn: Tester
+givenName: Ted
+displayName: Ted Tester
+mail: ted_tester@example.com
+uid: ted_tester
+userPassword: password123
+uidNumber: 1000
+gidNumber: 1000
+homeDirectory: /home/ted_tester

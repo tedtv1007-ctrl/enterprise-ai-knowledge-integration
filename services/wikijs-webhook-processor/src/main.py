@@ -1,123 +1,63 @@
-from fastapi import FastAPI, Request, HTTPException, Header
-from pydantic import BaseModel
-import httpx
 import os
-import json
-import logging
 import hmac
 import hashlib
-from sentence_transformers import SentenceTransformer
-import sys
+import json
+import logging
+import httpx
+from fastapi import FastAPI, Request, Header, HTTPException, BackgroundTasks
+from pydantic import BaseModel
+from typing import List, Optional
 
-# Ensure vector_service can be imported
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../src"))
-from vector_service.lancedb_acl import VectorService
+# Try relative imports for modules
+try:
+    from .modules.processor import ContentProcessor
+    from .modules.embedding import EmbeddingService
+    from .modules.vector_service import VectorService
+except ImportError:
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), "modules"))
+    from processor import ContentProcessor
+    from embedding import EmbeddingService
+    from vector_service import VectorService
 
-# Configure logging
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wikijs-processor")
 
-app = FastAPI(title="Wiki.js Webhook Processor")
+app = FastAPI(title="Wiki.js Webhook Processor (Refactored)")
 
-# Environment variables
+# Configuration (Prefer environment variables)
+WIKI_WEBHOOK_SECRET = os.getenv("WIKI_WEBHOOK_SECRET", "")
 WIKIJS_API_URL = os.getenv("WIKIJS_API_URL", "http://wikijs/graphql")
-WIKIJS_API_TOKEN = os.getenv("WIKIJS_API_TOKEN", "REPLACE_ME")
-WIKIJS_WEBHOOK_SECRET = os.getenv("WIKIJS_WEBHOOK_SECRET", "")
-DB_URI = os.getenv("DB_URI", "/tmp/lancedb")
+WIKIJS_API_TOKEN = os.getenv("WIKIJS_API_TOKEN", "")
+DB_URI = os.getenv("DB_URI", "/tmp/lancedb_wiki")
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mxbai-embed-large")
 
-# Initialize models and services
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Initialize shared services
 vector_service = VectorService(db_uri=DB_URI)
-
-class WikiEvent(BaseModel):
-    event: str
-    pageId: int
-    pageTitle: str
-    pagePath: str
+processor = ContentProcessor()
+embedding_service = EmbeddingService(provider=EMBEDDING_PROVIDER, model=EMBEDDING_MODEL)
 
 @app.get("/")
 async def health_check():
-    return {"status": "running", "service": "wikijs-webhook-processor"}
+    return {"status": "running", "service": "wikijs-webhook-processor", "version": "2.0.0"}
 
-from fastapi import FastAPI, Request, HTTPException, Header, BackgroundTasks
-# ... (existing imports)
-
-@app.post("/webhook")
-async def handle_wikijs_event(request: Request, background_tasks: BackgroundTasks, x_wikijs_signature: str = Header(None)):
-    body = await request.body()
-    
-    # Verify Signature
-    if WIKIJS_WEBHOOK_SECRET:
-        if not x_wikijs_signature:
-            logger.error("Missing X-Wikijs-Signature header")
-            raise HTTPException(status_code=401, detail="Missing signature")
-        
-        expected_signature = hmac.new(
-            WIKIJS_WEBHOOK_SECRET.encode(),
-            body,
-            hashlib.sha256
-        ).hexdigest()
-        
-        if not hmac.compare_digest(x_wikijs_signature, expected_signature):
-            logger.error(f"Invalid signature: got {x_wikijs_signature}, expected {expected_signature}")
-            raise HTTPException(status_code=401, detail="Invalid signature")
-
-    try:
-        event = json.loads(body)
-    except json.JSONDecodeError:
-        logger.error("Failed to decode JSON payload")
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-
-    event_type = event.get("event")
-    page_id = event.get("pageId")
-    
-    if event_type in ["pages:created", "pages:updated"]:
-        # Offload heavy processing to background task to respond quickly to Wiki.js
-        background_tasks.add_task(process_wiki_page, page_id)
-        logger.info(f"Queued background processing for page {page_id}")
-        return {"message": "Event queued", "status": "accepted"}
-        
-    return {"message": "Event ignored", "status": "ignored"}
-
-async def process_wiki_page(page_id: int):
-    """
-    Background task to handle the full RAG pipeline.
-    """
-    try:
-        page_data = await fetch_wiki_content(page_id)
-        if not page_data:
-            logger.warning(f"Skipping processing for {page_id}: No data found")
-            return
-
-        content = page_data.get("content", "")
-        chunks = chunk_markdown(content)
-        
-        documents = []
-        for i, chunk in enumerate(chunks):
-            # Optimization: could batch encode if chunks are many
-            vector = model.encode(chunk).tolist()
-            documents.append({
-                "id": f"{page_id}_{i}",
-                "vector": vector,
-                "text": chunk,
-                "roles": ["admin", "staff"], 
-                "metadata": {
-                    "title": page_data.get("title"),
-                    "path": page_data.get("path"),
-                    "updatedAt": page_data.get("updatedAt"),
-                    "source": "wikijs"
-                }
-            })
-            
-        vector_service.add_documents(documents)
-        logger.info(f"Successfully indexed {len(documents)} chunks for page {page_id}")
-    except Exception as e:
-        logger.error(f"Failed to process page {page_id} in background: {str(e)}")
+def verify_signature(payload: bytes, signature: str):
+    """Wiki.js webhook signature verification (SHA256)"""
+    if not signature:
+        return False
+    # Wiki.js sends signature as "sha256=hash" or just "hash"
+    actual_sig = signature.split('=')[-1]
+    expected = hmac.new(
+        WIKI_WEBHOOK_SECRET.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, actual_sig)
 
 async def fetch_wiki_content(page_id: int):
-    """
-    Fetches page content from Wiki.js using GraphQL API.
-    """
+    """Fetches page content from Wiki.js using GraphQL API."""
     query = """
     query ($id: Int!) {
       pages {
@@ -126,52 +66,98 @@ async def fetch_wiki_content(page_id: int):
           title
           description
           path
+          tags
           updatedAt
         }
       }
     }
     """
-    variables = {"id": page_id}
-    
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
                 WIKIJS_API_URL,
-                json={"query": query, "variables": variables},
+                json={"query": query, "variables": {"id": page_id}},
                 headers={"Authorization": f"Bearer {WIKIJS_API_TOKEN}"},
                 timeout=10.0
             )
             response.raise_for_status()
             data = response.json()
-            page_data = data.get("data", {}).get("pages", {}).get("single")
-            if not page_data:
-                logger.error(f"Page {page_id} not found in Wiki.js")
-                return None
-            return page_data
+            return data.get("data", {}).get("pages", {}).get("single")
         except Exception as e:
             logger.error(f"Error fetching content for page {page_id}: {str(e)}")
             return None
 
-def chunk_markdown(content: str, chunk_size: int = 1000):
-    """
-    Simple markdown chunking by paragraph/length.
-    TODO: Use LangChain or similar for smarter semantic chunking.
-    """
-    paragraphs = content.split('\n\n')
-    chunks = []
-    current_chunk = ""
-    
-    for p in paragraphs:
-        if len(current_chunk) + len(p) < chunk_size:
-            current_chunk += p + "\n\n"
-        else:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = p + "\n\n"
+async def process_wiki_page(page_id: int):
+    """Background task to handle the full RAG pipeline."""
+    try:
+        page_data = await fetch_wiki_content(page_id)
+        if not page_data:
+            logger.warning(f"Skipping processing for {page_id}: No data found")
+            return
+
+        content = page_data.get("content", "")
+        path = page_data.get("path", "unknown")
+        tags = page_data.get("tags", [])
+        
+        # Delete existing entries for this path to avoid duplicates
+        vector_service.delete_by_path(path)
+        
+        chunks = processor.chunk_markdown(content)
+        documents = []
+        
+        # Simple heuristic for roles based on tags
+        allowed_roles = ["public"]
+        if any(t in tags for t in ["private", "internal", "confidential"]):
+            allowed_roles = ["authenticated"]
+        if "admin" in tags:
+            allowed_roles = ["admin"]
+
+        for i, chunk in enumerate(chunks):
+            vector = embedding_service.get_embedding(chunk)
+            documents.append({
+                "id": f"{page_id}_{i}",
+                "vector": vector,
+                "text": chunk,
+                "metadata": {
+                    "title": page_data.get("title"),
+                    "path": path,
+                    "roles": allowed_roles,
+                    "updatedAt": page_data.get("updatedAt"),
+                    "source": "wikijs"
+                }
+            })
             
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    return chunks
+        vector_service.add_documents(documents)
+        logger.info(f"Successfully indexed {len(documents)} chunks for page {page_id} (path: {path})")
+    except Exception as e:
+        logger.error(f"Failed to process page {page_id} in background: {str(e)}")
+
+@app.post("/webhook")
+async def handle_wikijs_event(request: Request, background_tasks: BackgroundTasks, x_wikijs_signature: str = Header(None)):
+    body = await request.body()
+    
+    # Verify Signature
+    if WIKI_WEBHOOK_SECRET:
+        if not verify_signature(body, x_wikijs_signature):
+            logger.warning("Invalid webhook signature received.")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+
+    try:
+        event_data = json.loads(body)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = event_data.get("event")
+    # Wiki.js payload structure can vary; checking both common patterns
+    page_id = event_data.get("pageId") or event_data.get("data", {}).get("id")
+    
+    if event_type in ["pages:created", "pages:updated"]:
+        if page_id:
+            background_tasks.add_task(process_wiki_page, int(page_id))
+            logger.info(f"Queued background processing for page {page_id}")
+            return {"message": "Event queued", "status": "accepted"}
+        
+    return {"message": "Event ignored", "status": "ignored"}
 
 if __name__ == "__main__":
     import uvicorn

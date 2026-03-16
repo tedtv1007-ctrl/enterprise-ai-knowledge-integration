@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test-notion-ingestion:
+  test-wiki-vectorization:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -25,7 +25,14 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install notion-client
+        pip install lancedb pyarrow pandas fastapi uvicorn requests hmac hashlib
+
+    - name: Run Webhook & Vectorization Tests
+      working-directory: ./src/wiki_webhook
+      env:
+        PYTHONPATH: ../..
+      run: |
+        python -m unittest discover . -p "test_*.py"
 
     - name: Run Notion Ingestion Tests
       working-directory: ./src/notion_ingestion

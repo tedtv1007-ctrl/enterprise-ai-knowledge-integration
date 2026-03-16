@@ -84,13 +84,34 @@ class NotionIngester:
         Returns:
             str: The page content formatted as Markdown.
         """
+        return self._fetch_blocks_recursive(page_id)
+
+    def _fetch_blocks_recursive(self, block_id: str, depth: int = 0) -> str:
+        """Helper to recursively fetch blocks and nested children."""
+        if depth > 10: # Safety break to avoid infinite recursion
+            return ""
+            
         try:
-            blocks = self.notion.blocks.children.list(block_id=page_id)
+            results = []
+            has_more = True
+            start_cursor = None
+            
+            while has_more:
+                response = self.notion.blocks.children.list(
+                    block_id=block_id, 
+                    start_cursor=start_cursor
+                )
+                results.extend(response.get("results", []))
+                has_more = response.get("has_more", False)
+                start_cursor = response.get("next_cursor")
+                
             markdown_content = []
             
-            for block in blocks.get("results", []):
+            for block in results:
                 b_type = block.get("type")
+                has_children = block.get("has_children", False)
                 
+                # Extract text for common block types
                 if b_type == "paragraph":
                     text = self._extract_text(block, "paragraph")
                     markdown_content.append(text)
@@ -107,13 +128,18 @@ class NotionIngester:
                     text = "### " + self._extract_text(block, "heading_3")
                     markdown_content.append(text)
                 
-                elif b_type == "bulleted_list_item":
-                    text = "- " + self._extract_text(block, "bulleted_list_item")
+                elif b_type in ["bulleted_list_item", "numbered_list_item"]:
+                    prefix = "- " if b_type == "bulleted_list_item" else "1. "
+                    text = prefix + self._extract_text(block, b_type)
                     markdown_content.append(text)
-                
-                elif b_type == "numbered_list_item":
-                    text = "1. " + self._extract_text(block, "numbered_list_item")
-                    markdown_content.append(text)
+                    
+                    # Recursively handle nested lists
+                    if has_children:
+                        nested_content = self._fetch_blocks_recursive(block["id"], depth + 1)
+                        if nested_content:
+                            # Indent nested list items
+                            indented = "\n".join(["    " + line for line in nested_content.split("\n")])
+                            markdown_content.append(indented)
                 
                 elif b_type == "code":
                     code_block = block.get("code", {})
@@ -125,21 +151,33 @@ class NotionIngester:
                     image_block = block.get("image", {})
                     caption_list = image_block.get("caption", [])
                     caption = "".join([t.get("plain_text", "") for t in caption_list])
-                    
-                    # Handle both 'file' (temporary AWS S3) and 'external' (public URL)
-                    url = ""
-                    if "file" in image_block:
-                        url = image_block["file"].get("url", "")
-                    elif "external" in image_block:
-                        url = image_block["external"].get("url", "")
-                        
+                    url = image_block.get("file", {}).get("url", "") or \
+                          image_block.get("external", {}).get("url", "")
                     markdown_content.append(f"![{caption}]({url})")
+                
+                elif b_type == "to_do":
+                    checked = "x" if block["to_do"].get("checked", False) else " "
+                    text = f"- [{checked}] " + self._extract_text(block, "to_do")
+                    markdown_content.append(text)
 
-                # Add more block types as needed...
+                elif b_type == "quote":
+                    text = "> " + self._extract_text(block, "quote")
+                    markdown_content.append(text)
 
-            return "\n\n".join(markdown_content)
+                elif b_type == "toggle":
+                    text = "▶ " + self._extract_text(block, "toggle")
+                    markdown_content.append(text)
+                    if has_children:
+                        nested_content = self._fetch_blocks_recursive(block["id"], depth + 1)
+                        markdown_content.append(nested_content)
+
+                elif has_children and b_type not in ["bulleted_list_item", "numbered_list_item", "toggle"]:
+                    # Catch-all for other block types with children (like columns)
+                    markdown_content.append(self._fetch_blocks_recursive(block["id"], depth + 1))
+
+            return "\n\n".join([m for m in markdown_content if m])
         except APIResponseError as error:
-            logger.error(f"Notion API Error fetching blocks for {page_id}: {error}")
+            logger.error(f"Notion API Error fetching blocks for {block_id}: {error}")
             return ""
 
 if __name__ == "__main__":
