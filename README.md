@@ -57,3 +57,21 @@ graph TD
 - [ ] Confluence Webhook 同步機制實作
 - [ ] Keycloak 群組權限自動映射至向量庫
 - [ ] Mattermost 核保專家 AI 流程優化
+
+## 🚀 快速開始 (Development)
+
+### 1. 使用 GitHub Codespaces (推薦)
+1. 在 GitHub 倉庫點擊 **Code** -> **Codespaces** -> **Create codespace on main**。
+2. 環境會自動配置 Python 3.11, Docker, pgvector 以及所有依賴。
+3. 啟動後，直接執行 `pytest enterprise-ai-knowledge-integration/tests/` 即可進行測試。
+
+### 2. 使用 GitHub Actions (CI)
+- 每次 `push` 到 `main` 或 `feature/*` 都會自動觸發 CI。
+- 測試包含：啟動真實 `pgvector` 容器、執行 `pytest`、產出測試報告與覆蓋率 (Artifacts)。
+- 手動觸發：到 **Actions** -> **Enterprise AI Knowledge Integration CI (Enhanced)** -> **Run workflow**。
+
+### 3. 本地手動部署 (Docker Compose)
+1. 確保已安裝 Docker。
+2. 執行 `docker-compose up -d` 啟動資料庫。
+3. 安裝依賴：`pip install -r requirements.txt`。
+4. 執行 Webhook 伺服器：`python webhook_server.py`。
