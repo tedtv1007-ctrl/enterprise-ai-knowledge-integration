@@ -10,10 +10,12 @@ def get_client():
 @patch("webhook_server.VectorStore")
 @patch("webhook_server.EmbeddingService")
 def test_webhook_page_updated(mock_embedding, mock_vector_store):
-    client = get_client()
     # Setup mocks
-    mock_embedding.return_value.chunk_markdown.return_value = ["chunk 1", "chunk 2"]
-    mock_embedding.return_value.get_embedding.return_value = [0.1] * 384
+    mock_emb_instance = mock_embedding.return_value
+    mock_emb_instance.chunk_markdown.return_value = ["chunk 1", "chunk 2"]
+    mock_emb_instance.get_embedding.return_value = [0.1] * 384
+    
+    client = get_client()
     
     payload = {
         "type": "page.updated",
