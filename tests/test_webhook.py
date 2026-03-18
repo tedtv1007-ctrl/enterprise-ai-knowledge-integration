@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
 from webhook_server import app
 
+# Create client within a fixture or after the app is initialized
 client = TestClient(app)
 
 @patch("webhook_server.VectorStore")
@@ -27,10 +28,6 @@ def test_webhook_page_updated(mock_embedding, mock_vector_store):
     assert response.json()["status"] == "processed"
     assert response.json()["page"] == "test-page"
     assert response.json()["chunks"] == 2
-    
-    # Verify vector store was called
-    # Mocking is tricky because service instances are created at module level.
-    # We might need to inject them or use more advanced patching.
 
 def test_webhook_ignored_event():
     payload = {
