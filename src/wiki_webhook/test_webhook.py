@@ -1,9 +1,6 @@
 import unittest
 from fastapi.testclient import TestClient
-try:
-    from .main import app, WIKI_WEBHOOK_SECRET
-except ImportError:
-    from main import app, WIKI_WEBHOOK_SECRET
+from .main import app, WIKI_WEBHOOK_SECRET
 import hmac
 import hashlib
 import json
