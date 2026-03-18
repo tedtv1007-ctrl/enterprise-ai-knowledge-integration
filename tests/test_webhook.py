@@ -1,21 +1,34 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
-from webhook_server import app
+import sys
+import os
 
-# Create client within a fixture or after the app is initialized
-def get_client():
-    return TestClient(app)
+# Add the project root to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-@patch("webhook_server.VectorStore")
-@patch("webhook_server.EmbeddingService")
-def test_webhook_page_updated(mock_embedding, mock_vector_store):
-    # Setup mocks
-    mock_emb_instance = mock_embedding.return_value
-    mock_emb_instance.chunk_markdown.return_value = ["chunk 1", "chunk 2"]
-    mock_emb_instance.get_embedding.return_value = [0.1] * 384
-    
-    client = get_client()
+@pytest.fixture(autouse=True)
+def mock_services():
+    # Patch the classes in the source modules BEFORE they are imported by webhook_server
+    with patch("src.embedding_service.EmbeddingService") as mock_emb_cls, \
+         patch("src.vector_store.VectorStore") as mock_vec_cls:
+        
+        mock_emb_instance = mock_emb_cls.return_value
+        mock_vec_instance = mock_vec_cls.return_value
+        
+        # Setup common mock behavior
+        mock_emb_instance.chunk_markdown.return_value = ["chunk 1", "chunk 2"]
+        mock_emb_instance.get_embedding.return_value = [0.1] * 384
+        
+        yield {
+            "embedding": mock_emb_instance,
+            "vector_store": mock_vec_instance
+        }
+
+def test_webhook_page_updated(mock_services):
+    # Import app INSIDE the test to ensure it picks up the patched classes
+    from webhook_server import app
+    client = TestClient(app)
     
     payload = {
         "type": "page.updated",
@@ -34,7 +47,9 @@ def test_webhook_page_updated(mock_embedding, mock_vector_store):
     assert response.json()["chunks"] == 2
 
 def test_webhook_ignored_event():
-    client = get_client()
+    from webhook_server import app
+    client = TestClient(app)
+    
     payload = {
         "type": "comment.created",
         "data": {"foo": "bar"}
