@@ -40,15 +40,14 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r enterprise-ai-knowledge-integration/requirements.txt
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         pip install pytest httpx pytest-asyncio pytest-cov
 
     - name: Run Webhook & Vectorization Tests (pgvector Integration)
       env:
         DATABASE_URL: postgresql://wiki_user:wiki_password@localhost:5432/wiki_db
-        PYTHONPATH: ${{ github.workspace }}/enterprise-ai-knowledge-integration
+        PYTHONPATH: ${{ github.workspace }}
       run: |
-        cd enterprise-ai-knowledge-integration
         pytest --cov=src --cov=webhook_server --junitxml=test-results.xml tests/
 
     - name: Upload Test Results
@@ -56,11 +55,11 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results
-        path: enterprise-ai-knowledge-integration/test-results.xml
+        path: test-results.xml
 
     - name: Upload Coverage Report
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: coverage-report
-        path: enterprise-ai-knowledge-integration/.coverage
+        path: .coverage
