@@ -1,0 +1,44 @@
+name: Wiki.js Webhook Service Tests
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'services/wikijs-webhook-processor/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/wikijs-webhook-processor/**'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./services/wikijs-webhook-processor
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest httpx fastapi  # Ensure test tools are present
+        
+    - name: Run Integration Tests
+      env:
+        WIKI_WEBHOOK_SECRET: test-secret-for-ci
+        WIKIJS_API_URL: http://mock-wikijs/graphql
+      run: |
+        # Use PYTHONPATH to ensure local modules are discoverable
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+        python tests/test_integration.py
