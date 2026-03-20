@@ -8,8 +8,18 @@ import hmac
 import hashlib
 
 # Adjust path to import the service
+import sys
+import os
+from unittest.mock import MagicMock
+
+# Mock lancedb before importing main/vector_service
+mock_lancedb = MagicMock()
+sys.modules["lancedb"] = mock_lancedb
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
-from main import app, WIKIJS_WEBHOOK_SECRET
+sys.path.append(os.path.join(os.path.dirname(__file__), "../src/modules"))
+
+from main import app, WIKI_WEBHOOK_SECRET
 import main
 
 class TestWikiJSProcessorIntegration(unittest.TestCase):
@@ -17,7 +27,7 @@ class TestWikiJSProcessorIntegration(unittest.TestCase):
         self.client = TestClient(app)
         self.secret = "test-secret"
         # Temporarily override settings
-        main.WIKIJS_WEBHOOK_SECRET = self.secret
+        main.WIKI_WEBHOOK_SECRET = self.secret
         main.WIKIJS_API_URL = "http://localhost:8081/graphql"
 
     @patch("main.process_wiki_page") # Mock background task for response test

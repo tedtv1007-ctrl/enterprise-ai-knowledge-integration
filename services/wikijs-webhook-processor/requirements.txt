@@ -6,3 +6,6 @@ httpx
 sentence-transformers
 qdrant-client
 python-dotenv
+requests
+pandas
+pyarrow
